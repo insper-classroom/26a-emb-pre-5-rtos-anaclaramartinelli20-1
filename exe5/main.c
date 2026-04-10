@@ -1,6 +1,7 @@
 #include <FreeRTOS.h>
 #include <task.h>
 #include <semphr.h>
+#include <queue.h> 
 
 #include <stdio.h>
 #include "pico/stdlib.h"
@@ -12,9 +13,9 @@ const int BTN_PIN_Y = 21;
 const int LED_PIN_R = 5;
 const int LED_PIN_Y = 10;
 
-
-SemaphoreHandle_t sem_r;
-SemaphoreHandle_t sem_y;
+QueueHandle_t xQueueBtn;
+SemaphoreHandle_t xSemaphoreLedR;
+SemaphoreHandle_t xSemaphoreLedY;
 
 void btn_callback(uint gpio, uint32_t events) {
     static uint32_t last_time_r = 0;
@@ -24,22 +25,39 @@ void btn_callback(uint gpio, uint32_t events) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     if (events == GPIO_IRQ_EDGE_FALL) {
-        
-        if (gpio == BTN_PIN_R) {
-            if (current_time - last_time_r > 200) { 
-                last_time_r = current_time;
-                xSemaphoreGiveFromISR(sem_r, &xHigherPriorityTaskWoken);
-            }
+        int btn_pressed = -1; 
+
+        if (gpio == BTN_PIN_R && (current_time - last_time_r > 200)) { 
+            last_time_r = current_time;
+            btn_pressed = BTN_PIN_R;
         } 
-        else if (gpio == BTN_PIN_Y) {
-            if (current_time - last_time_y > 200) { 
-                last_time_y = current_time;
-                xSemaphoreGiveFromISR(sem_y, &xHigherPriorityTaskWoken);
-            }
+        else if (gpio == BTN_PIN_Y && (current_time - last_time_y > 200)) { 
+            last_time_y = current_time;
+            btn_pressed = BTN_PIN_Y;
+        }
+
+        if (btn_pressed != -1) {
+            xQueueSendFromISR(xQueueBtn, &btn_pressed, &xHigherPriorityTaskWoken);
         }
     }
     
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void btn_task(void* p) {
+    int btn_recebido = 0;
+
+    while (true) {
+        if (xQueueReceive(xQueueBtn, &btn_recebido, portMAX_DELAY) == pdTRUE) {
+            
+            if (btn_recebido == BTN_PIN_R) {
+                xSemaphoreGive(xSemaphoreLedR);
+            } 
+            else if (btn_recebido == BTN_PIN_Y) {
+                xSemaphoreGive(xSemaphoreLedY);
+            }
+        }
+    }
 }
 
 void led_r_task(void* p) {
@@ -52,9 +70,8 @@ void led_r_task(void* p) {
     while (true) {
         TickType_t tempo_espera = is_blinking ? 0 : portMAX_DELAY;
 
-        if (xSemaphoreTake(sem_r, tempo_espera) == pdTRUE) {
+        if (xSemaphoreTake(xSemaphoreLedR, tempo_espera) == pdTRUE) {
             is_blinking = !is_blinking; 
-            
             if (!is_blinking) {
                 gpio_put(LED_PIN_R, 0); 
             }
@@ -79,9 +96,8 @@ void led_y_task(void* p) {
     while (true) {
         TickType_t tempo_espera = is_blinking ? 0 : portMAX_DELAY;
 
-        if (xSemaphoreTake(sem_y, tempo_espera) == pdTRUE) {
+        if (xSemaphoreTake(xSemaphoreLedY, tempo_espera) == pdTRUE) {
             is_blinking = !is_blinking;
-            
             if (!is_blinking) {
                 gpio_put(LED_PIN_Y, 0);
             }
@@ -99,8 +115,10 @@ void led_y_task(void* p) {
 int main() {
     stdio_init_all();
     
-    sem_r = xSemaphoreCreateBinary();
-    sem_y = xSemaphoreCreateBinary();
+    xQueueBtn = xQueueCreate(10, sizeof(int));
+
+    xSemaphoreLedR = xSemaphoreCreateBinary();
+    xSemaphoreLedY = xSemaphoreCreateBinary();
 
     gpio_init(BTN_PIN_R);
     gpio_set_dir(BTN_PIN_R, GPIO_IN);
@@ -113,6 +131,7 @@ int main() {
     gpio_set_irq_enabled_with_callback(BTN_PIN_R, GPIO_IRQ_EDGE_FALL, true, &btn_callback);
     gpio_set_irq_enabled(BTN_PIN_Y, GPIO_IRQ_EDGE_FALL, true);
 
+    xTaskCreate(btn_task, "BTN_Task", 256, NULL, 1, NULL); 
     xTaskCreate(led_r_task, "LED_Task R", 256, NULL, 1, NULL);
     xTaskCreate(led_y_task, "LED_Task Y", 256, NULL, 1, NULL);
 
