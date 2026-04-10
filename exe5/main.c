@@ -17,25 +17,27 @@ QueueHandle_t xQueueBtn;
 SemaphoreHandle_t xSemaphoreLedR;
 SemaphoreHandle_t xSemaphoreLedY;
 
+
 void btn_callback(uint gpio, uint32_t events) {
     static uint32_t last_time_r = 0;
     static uint32_t last_time_y = 0;
     
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    int btn_pressed = -1; 
 
     if (events == GPIO_IRQ_EDGE_FALL) {
-        int btn_pressed = -1; 
-
-        if (gpio == BTN_PIN_R && (current_time - last_time_r > 200)) { 
+        
+        if (gpio == BTN_PIN_R && (current_time - last_time_r > 50)) { 
             last_time_r = current_time;
             btn_pressed = BTN_PIN_R;
         } 
-        else if (gpio == BTN_PIN_Y && (current_time - last_time_y > 200)) { 
+        else if (gpio == BTN_PIN_Y && (current_time - last_time_y > 50)) { 
             last_time_y = current_time;
             btn_pressed = BTN_PIN_Y;
         }
 
+        // Envia para a Fila
         if (btn_pressed != -1) {
             xQueueSendFromISR(xQueueBtn, &btn_pressed, &xHigherPriorityTaskWoken);
         }
@@ -49,7 +51,6 @@ void btn_task(void* p) {
 
     while (true) {
         if (xQueueReceive(xQueueBtn, &btn_recebido, portMAX_DELAY) == pdTRUE) {
-            
             if (btn_recebido == BTN_PIN_R) {
                 xSemaphoreGive(xSemaphoreLedR);
             } 
@@ -116,7 +117,6 @@ int main() {
     stdio_init_all();
     
     xQueueBtn = xQueueCreate(10, sizeof(int));
-
     xSemaphoreLedR = xSemaphoreCreateBinary();
     xSemaphoreLedY = xSemaphoreCreateBinary();
 
