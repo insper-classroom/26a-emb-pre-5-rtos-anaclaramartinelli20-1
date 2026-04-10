@@ -64,13 +64,13 @@ void led_2_task(void *p) {
 }
 
 void btn_2_task(void *p) {
-  gpio_init(BTN_PIN_R);
-  gpio_set_dir(BTN_PIN_R, GPIO_IN);
-  gpio_pull_up(BTN_PIN_R);
+  gpio_init(BTN_PIN_G);
+  gpio_set_dir(BTN_PIN_G, GPIO_IN);
+  gpio_pull_up(BTN_PIN_G);
 
   while (true) {
-    if (!gpio_get(BTN_PIN_R)) {
-      while (!gpio_get(BTN_PIN_R)) {
+    if (!gpio_get(BTN_PIN_G)) {
+      while (!gpio_get(BTN_PIN_G)) {
         vTaskDelay(pdMS_TO_TICKS(1));
       }
       xSemaphoreGive(xSemaphore_r);
