@@ -39,10 +39,10 @@ void led_2_task(void *p) {
 int main() {
   stdio_init_all();
   printf("Start RTOS \n");
-  xTaskCreate(led_1_task, "LED_Task 1", 256, NULL, 1, NULL);
-  vTaskStartScheduler();
 
+  xTaskCreate(led_1_task, "LED_Task 1", 256, NULL, 1, NULL);
   xTaskCreate(led_2_task, "LED_Task 2", 256, NULL, 1, NULL);
+  
   vTaskStartScheduler();
 
   while (true)
