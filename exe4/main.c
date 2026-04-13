@@ -1,6 +1,5 @@
 #include <FreeRTOS.h>
 #include <task.h>
-#include <semphr.h>
 #include <queue.h>
 
 #include "pico/stdlib.h"
@@ -13,19 +12,13 @@ const int LED_PIN_R = 4;
 const int LED_PIN_G = 6;
 
 QueueHandle_t xQueueButId; 
-
 QueueHandle_t xQueueDelayG; 
 
-SemaphoreHandle_t xSemaphore_r;
-
-
 void btn_callback(uint gpio, uint32_t events) {
-    if (events == 0x4) { 
-        if (gpio == BTN_PIN_R) {
-            xSemaphoreGiveFromISR(xSemaphore_r, NULL);
-        } 
-        else if (gpio == BTN_PIN_G) {
+    if (events == GPIO_IRQ_EDGE_FALL) { 
+        if (gpio == BTN_PIN_G) {
             static int delay_g = 0; 
+            
             if (delay_g < 1000) {
                 delay_g += 100;
             } else {
@@ -34,11 +27,11 @@ void btn_callback(uint gpio, uint32_t events) {
             
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
             xQueueSendFromISR(xQueueDelayG, &delay_g, &xHigherPriorityTaskWoken);
+            
             portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
         }
     }
 }
-
 
 void led_1_task(void *p) {
     gpio_init(LED_PIN_R);
@@ -65,11 +58,15 @@ void btn_1_task(void *p) {
     gpio_init(BTN_PIN_R);
     gpio_set_dir(BTN_PIN_R, GPIO_IN);
     gpio_pull_up(BTN_PIN_R);
-    gpio_set_irq_enabled(BTN_PIN_R, GPIO_IRQ_EDGE_FALL, true);
 
     int delay = 0;
     while (true) {
-        if (xSemaphoreTake(xSemaphore_r, portMAX_DELAY) == pdTRUE) {
+        if (!gpio_get(BTN_PIN_R)) {
+            
+            while (!gpio_get(BTN_PIN_R)) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+            }
+
             if (delay < 1000) {
                 delay += 100;
             } else {
@@ -78,9 +75,10 @@ void btn_1_task(void *p) {
             printf("Enviando delay R (via Task): %d \n", delay);
             xQueueSend(xQueueButId, &delay, 0);
         }
+        
+        vTaskDelay(pdMS_TO_TICKS(10)); 
     }
 }
-
 
 void led_2_task(void *p) {
     gpio_init(LED_PIN_G);
@@ -109,7 +107,6 @@ int main() {
 
     xQueueButId = xQueueCreate(32, sizeof(int));
     xQueueDelayG = xQueueCreate(32, sizeof(int)); 
-    xSemaphore_r = xSemaphoreCreateBinary();
 
     gpio_init(BTN_PIN_G);
     gpio_set_dir(BTN_PIN_G, GPIO_IN);
